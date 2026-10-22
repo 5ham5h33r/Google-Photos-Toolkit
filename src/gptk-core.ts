@@ -5,7 +5,7 @@ import log from './ui/logic/log';
 import getFromStorage from './utils/getFromStorage';
 import * as filters from './filters';
 import { apiSettingsDefault } from './api/api-utils-default-presets';
-import { LockedDateRepair, exclusiveLockedRepair, readRepairRecovery } from './locked-date-repair';
+import { LockedDateRepair, exclusiveLockedRepair, readRepairRecovery, lockedRepairLimit } from './locked-date-repair';
 import { previewLockedDates } from './ui/logic/locked-date-preview';
 import { windowGlobalData } from './windowGlobalData';
 import type { MediaItem, Filter, Source, Action, Album, ApiSettings, LibraryTimelinePage } from './types';
@@ -13,6 +13,7 @@ import type { MediaItem, Filter, Source, Action, Album, ApiSettings, LibraryTime
 type ActionHandler = (params: ExecuteActionParams) => Promise<void>;
 
 interface ExecuteActionParams {
+  maxRepairItems?: number;
   mediaItems: MediaItem[];
   source: Source;
   targetAlbum?: Album;
@@ -57,7 +58,7 @@ export default class Core {
       copyDescFromOther: async (p) => this.apiUtils.copyDescriptionFromOther(p.mediaItems),
       setDateFromFilename: async (p) => this.apiUtils.setTimestampFromFilename(p.mediaItems),
       exportMetadata: async (p) => this.apiUtils.exportMetadata(p.mediaItems),
-      repairLockedDates: async (p) => this.lockedDateRepair().run(p.mediaItems),
+      repairLockedDates: async (p) => this.lockedDateRepair().run(p.mediaItems.slice(0, lockedRepairLimit(String(p.maxRepairItems ?? 1)))),
       recoverLockedDates: async () => this.lockedDateRepair().recover(),
     };
   }
@@ -469,6 +470,7 @@ export default class Core {
   ): Promise<void> {
     try {
       this.preChecks(filter);
+      if (action.elementId === 'repairLockedDates') lockedRepairLimit(filter.lockedDateRepairLimit);
     } catch (error) {
       log(String(error), 'error');
       return;
@@ -494,6 +496,7 @@ export default class Core {
       if (!this.isProcessRunning) return;
 
       await this.executeAction(action, {
+        maxRepairItems: action.elementId === 'repairLockedDates' ? lockedRepairLimit(filter.lockedDateRepairLimit) : undefined,
         mediaItems,
         source,
         targetAlbum,

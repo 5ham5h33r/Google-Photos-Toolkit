@@ -1,5 +1,5 @@
 import {describe, expect, it, vi} from 'vitest';
-import {LockedDateRepair, recoveryKey, readRepairRecovery, exclusiveLockedRepair} from '../src/locked-date-repair';
+import {LockedDateRepair, recoveryKey, readRepairRecovery, exclusiveLockedRepair, lockedRepairLimit} from '../src/locked-date-repair';
 import type {RepairApi, DateRepairPlan} from '../src/locked-date-repair';
 import type {ItemInfoExt, MediaItem} from '../src/types';
 
@@ -33,6 +33,11 @@ function fixture() {
 }
 
 describe('Locked Folder repair lifecycle', () => {
+  it('defaults to a one-photo test and validates repair limits', () => {
+    expect(lockedRepairLimit()).toBe(1);
+    expect(lockedRepairLimit('100')).toBe(100);
+    for (const value of ['0','-1','101','1.5','NaN','']) expect(() => lockedRepairLimit(value)).toThrow('1 to 100');
+  });
   it('journals before unlock, relocks before preview, verifies edits and relocks again', async () => {
     const f = fixture();
     await f.service.run([f.item]);

@@ -228,6 +228,7 @@ export interface RemoteMatch {
 }
 
 export interface Filter {
+  lockedDateRepairLimit?: string;
   dateType?: 'taken' | 'uploaded';
   intervalType?: 'include' | 'exclude';
   lowerBoundaryDate?: string;

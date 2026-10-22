@@ -28,6 +28,12 @@ export interface RepairRecovery extends RepairItem {
 
 export const recoveryKey = (account: string): string => `gptk-locked-date-recovery:${account}`;
 
+export function lockedRepairLimit(value = '1'): number {
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Locked date repair limit must be a whole number from 1 to 100.');
+  return limit;
+}
+
 export function readRepairRecovery(storage: Pick<Storage, 'getItem'>, account: string): RepairRecovery | null {
   const raw = storage.getItem(recoveryKey(account));
   if (raw === null) return null;

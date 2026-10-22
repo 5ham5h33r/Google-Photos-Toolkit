@@ -49,4 +49,18 @@ describe('Locked Folder action dispatch', () => {
     const core=new Core();
     await expect(core.executeAction({elementId:'repairLockedDates'},{source:'library',mediaItems:[item],preserveOrder:false})).rejects.toThrow('Locked source');
   });
+  it('defaults to opening only the first photo, even with a large source selection', async () => {
+    const run=vi.spyOn(LockedDateRepair.prototype,'run').mockResolvedValue();
+    const core=new Core();
+    const other={...item,mediaKey:'other',dedupKey:'other'};
+    await core.executeAction({elementId:'repairLockedDates'},{source:'lockedFolder',mediaItems:[item,other],preserveOrder:false});
+    expect(run).toHaveBeenCalledWith([item]);
+  });
+  it('passes an explicit valid run limit through to the repair selection', async () => {
+    const run=vi.spyOn(LockedDateRepair.prototype,'run').mockResolvedValue();
+    const core=new Core();
+    const other={...item,mediaKey:'other',dedupKey:'other'};
+    await core.executeAction({elementId:'repairLockedDates'},{source:'lockedFolder',mediaItems:[item,other],maxRepairItems:2,preserveOrder:false});
+    expect(run).toHaveBeenCalledWith([item,other]);
+  });
 });

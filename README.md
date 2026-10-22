@@ -40,6 +40,8 @@ As simple as selecting "Library" source, clicking `Move to trash`, then clearing
 
 Open and authenticate to Google Photos' Locked Folder, reload the page there, open GPTK, and select **Locked** as the source. Use **Repair locked dates**. Other unsupported Locked Folder actions are disabled and rejected; they are never silently changed into Unlock.
 
+**Maximum photos per repair run** defaults to **1** for an initial test and can be increased to at most 100. The limit applies before any photos are temporarily opened, including the metadata-inspection pass. Filters narrow the candidate selection; the first matching photos, up to this limit, are inspected. A skipped or already-correct first photo still uses one slot. Leave the limit at 1 until a live inspection/edit/re-lock test succeeds.
+
 The repair works on the existing photos, without uploading copies:
 
 1. It saves a recovery entry before temporarily moving one photo out of Locked Folder to read its filename and current date. It then returns the photo and verifies folder membership before proceeding to another photo.

@@ -98,6 +98,7 @@ export function updateUI(): void {
 
   function updateFilterVisibility(): void {
     const filterElements: Record<string, HTMLElement | null> = {
+      lockedDateOptions: document.querySelector<HTMLElement>('.locked-date-options'),
       livePhotoType: (document.querySelector('.type input[value=live]'))?.parentNode as HTMLElement | null,
       includeAlbums: document.querySelector<HTMLElement>('.include-albums'),
       owned: document.querySelector<HTMLElement>('.owned'),
@@ -123,6 +124,9 @@ export function updateUI(): void {
 
     if (isActiveTab('albums') && filterElements.includeAlbums) {
       toggleVisibility(filterElements.includeAlbums, true);
+    }
+    if (isActiveTab('lockedFolder') && filterElements.lockedDateOptions) {
+      toggleVisibility(filterElements.lockedDateOptions, true);
     }
     if (['library', 'search', 'favorites'].some(isActiveTab)) {
       if (filterElements.owned) toggleVisibility(filterElements.owned, true);
