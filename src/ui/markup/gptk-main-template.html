@@ -302,6 +302,8 @@
           <button type="button" id="unLock" title="Move out of Locked Folder">Unlock</button>
           <button type="button" id="copyDescFromOther" title="Copy captions from EXIF to description">Copy EXIF Desc</button>
           <button type="button" id="setDateFromFilename" title="Set photo date from filename (like exiftool)">Date from Name</button>
+          <button type="button" id="repairLockedDates" title="Preview filename dates, repair selected photos, and return them to Locked Folder">Repair locked dates</button>
+          <button type="button" id="recoverLockedDates" title="Return the pending photo to Locked Folder without changing its date">Recover locked photo</button>
           <button type="button" id="exportMetadata" title="Download metadata as a CSV file">Export Metadata</button>
         </div>
         <div class="to-existing-container">
@@ -320,6 +322,8 @@
           <button class="return" title="Back to Actions">&larr; Back</button>
         </div>
       </div>
+
+      <p id="lockedDateRecoveryNotice" role="alert" hidden>Locked Folder recovery is pending. Open Locked Folder, reload this page, select Locked, and use Recover locked photo before continuing. Keep this browser’s site data until recovery is complete.</p>
 
       <!-- Filter preview + Log -->
       <div class="filter-preview" title="Filter Preview">

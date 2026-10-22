@@ -3,6 +3,8 @@ import getFormData from './utils/getFormData';
 import { disableActionBar } from './utils/disable-action-bar';
 import { core } from '../../globals';
 import type { Filter } from '../../types';
+import { recoveryKey } from '../../locked-date-repair';
+import { windowGlobalData } from '../../windowGlobalData';
 
 export function updateUI(): void {
   function toggleVisibility(element: HTMLElement, toggle: boolean): void {
@@ -57,6 +59,29 @@ export function updateUI(): void {
     setDisabled('lock', isActiveTab('lockedFolder'));
     setDisabled('unLock', !isActiveTab('lockedFolder'));
     setDisabled('copyDescFromOther', isActiveTab('trash'));
+    const locked = isActiveTab('lockedFolder');
+    const supportedLockedActions = new Set(['unLock', 'repairLockedDates', 'recoverLockedDates']);
+    if (locked) {
+      for (const button of document.querySelectorAll<HTMLButtonElement>('.action-bar button')) {
+        if (!supportedLockedActions.has(button.id)) button.disabled = true;
+      }
+    }
+    let pending = true;
+    try { pending = localStorage.getItem(recoveryKey(windowGlobalData.account)) !== null; } catch { /* Fail closed when storage is unavailable. */ }
+    for (const id of ['repairLockedDates', 'recoverLockedDates']) {
+      const button = document.getElementById(id) as HTMLButtonElement | null;
+      if (button) {
+        button.hidden = !locked;
+        button.disabled = id === 'repairLockedDates' ? !locked || pending : !locked || !pending;
+      }
+    }
+    if (pending) {
+      for (const button of document.querySelectorAll<HTMLButtonElement>('.action-bar button')) {
+        if (button.id !== 'recoverLockedDates') button.disabled = true;
+      }
+    }
+    const recoveryNotice = document.getElementById('lockedDateRecoveryNotice');
+    if (recoveryNotice) recoveryNotice.hidden = !pending;
 
     // Soft-disabled (not the `disabled` attribute) so the hint tooltip still
     // shows on hover — browsers suppress title tooltips on disabled buttons.

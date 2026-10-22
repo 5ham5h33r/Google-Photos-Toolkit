@@ -10,6 +10,8 @@ import advancedSettingsListenersSetUp from './advanced-settings';
 import filterListenersSetUp from './filter-listeners';
 import registerMenuCommand from './register-menu-command';
 import type { Album } from '../../types';
+import { recoveryKey } from '../../locked-date-repair';
+import { windowGlobalData } from '../../windowGlobalData';
 
 export default function initUI(): void {
   registerMenuCommand();
@@ -20,6 +22,13 @@ export default function initUI(): void {
   albumSelectsControlsSetUp();
   advancedSettingsListenersSetUp();
   updateUI();
+  try {
+    if (localStorage.getItem(recoveryKey(windowGlobalData.account)) !== null) {
+      log('Locked Folder recovery pending. Open Locked Folder, reload, and use Recover locked photo. Do not clear site data.', 'error');
+    }
+  } catch {
+    log('Browser storage is unavailable. Locked Folder date repair requires persistent recovery storage.', 'error');
+  }
 
   const cachedAlbums = getFromStorage<Album[]>('albums');
   if (cachedAlbums) {

@@ -27,6 +27,8 @@ export default class Api {
   private static readonly MAX_RETRIES = 3;
   private static readonly RETRY_BASE_DELAY_MS = 2000;
 
+  constructor(private readonly requestTimeoutMs?: number) {}
+
   /**
    * Core RPC request with retry and response validation.
    *
@@ -72,6 +74,7 @@ export default class Api {
           body: requestDataString,
           method: 'POST',
           credentials: 'include',
+          signal: this.requestTimeoutMs ? AbortSignal.timeout(this.requestTimeoutMs) : undefined,
         });
 
         if (!response.ok) {

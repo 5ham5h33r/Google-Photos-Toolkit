@@ -36,6 +36,22 @@ Media with similar thumbnails will be added to the album.
 
 As simple as selecting "Library" source, clicking `Move to trash`, then clearing it.
 
+### Repair dates in Locked Folder (experimental)
+
+Open and authenticate to Google Photos' Locked Folder, reload the page there, open GPTK, and select **Locked** as the source. Use **Repair locked dates**. Other unsupported Locked Folder actions are disabled and rejected; they are never silently changed into Unlock.
+
+The repair works on the existing photos, without uploading copies:
+
+1. It saves a recovery entry before temporarily moving one photo out of Locked Folder to read its filename and current date. It then returns the photo and verifies folder membership before proceeding to another photo.
+2. Once all previewed photos are back in Locked Folder, a table shows the proposed changes. Uncheck changes you do not want and save the JSON change log before applying. Cancel leaves dates unchanged.
+3. Each selected photo is opened individually again, checked against the preview, updated, read back to verify its date, and returned to Locked Folder. Stop prevents the next photo from opening; returning the current photo is still attempted.
+
+Only one browser tab can run a repair or recovery for the account at a time. Unknown or ambiguous filenames, missing timezone offsets, and already matching dates are skipped. A leading `YYYY-MM-DD` followed by a UUID or opaque identifier supplies a date only; the existing clock time is preserved. Complete date/time names (including zero hours/minutes and three fractional-second digits) are supported. Calculations use each photo's saved UTC offset, not the browser timezone. Filenames that encode another timezone, such as UTC, need manual review. The general **Date from Name** action for non-locked sources is unchanged.
+
+**Interruption and privacy:** photos temporarily appear in the ordinary library during inspection and editing. A browser crash, logout, network failure, or tab closure can leave the current photo outside Locked Folder. This cannot be made atomic with these undocumented APIs. A minimal recovery entry containing the account and photo identifiers is stored in this browser's Google Photos site storage; filenames, thumbnails, and credentials are not stored in that entry. Keep this site data until recovery completes. After reopening and authenticating to Locked Folder in the same account and browser profile, reload GPTK and use **Recover locked photo**. Recovery does not change dates and only clears the entry after verifying the photo is locked. It works even when the photo no longer appears in the Locked source. Other actions are blocked while recovery is pending.
+
+The downloaded JSON change log includes filenames, identifiers, and old/new dates; keep it private. It is a record for manual restoration, not a one-click date rollback. Google can change these private APIs; automated tests use simulated responses and do not establish live compatibility. Test a small selection before broad use. Web Locks, working persistent site storage, and a current authenticated Locked Folder session are required.
+
 ### Use GPTK's api
 
 GPTK exports it's api class globally so you can use it in your browser's console.  

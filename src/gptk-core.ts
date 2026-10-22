@@ -5,6 +5,9 @@ import log from './ui/logic/log';
 import getFromStorage from './utils/getFromStorage';
 import * as filters from './filters';
 import { apiSettingsDefault } from './api/api-utils-default-presets';
+import { LockedDateRepair, exclusiveLockedRepair, readRepairRecovery } from './locked-date-repair';
+import { previewLockedDates } from './ui/logic/locked-date-preview';
+import { windowGlobalData } from './windowGlobalData';
 import type { MediaItem, Filter, Source, Action, Album, ApiSettings, LibraryTimelinePage } from './types';
 
 type ActionHandler = (params: ExecuteActionParams) => Promise<void>;
@@ -54,7 +57,22 @@ export default class Core {
       copyDescFromOther: async (p) => this.apiUtils.copyDescriptionFromOther(p.mediaItems),
       setDateFromFilename: async (p) => this.apiUtils.setTimestampFromFilename(p.mediaItems),
       exportMetadata: async (p) => this.apiUtils.exportMetadata(p.mediaItems),
+      repairLockedDates: async (p) => this.lockedDateRepair().run(p.mediaItems),
+      recoverLockedDates: async () => this.lockedDateRepair().recover(),
     };
+  }
+
+  private lockedDateRepair(): LockedDateRepair {
+    const account = windowGlobalData.account;
+    return new LockedDateRepair({
+      api: new Api(15000), account, storage: localStorage,
+      running: () => this.isProcessRunning,
+      assertAccount: () => {
+        if (!account || unsafeWindow.WIZ_global_data.oPEP7c !== account) throw new Error('Account changed. Return to the original account to recover its photo.');
+      },
+      preview: plans => previewLockedDates(account, plans),
+      log,
+    });
   }
 
   async getAndFilterMedia(filter: Filter, source: Source): Promise<MediaItem[]> {
@@ -461,6 +479,10 @@ export default class Core {
     this.apiUtils = new ApiUtils(this, apiSettings ?? apiSettingsDefault);
 
     try {
+      if (action.elementId === 'recoverLockedDates') {
+        await this.executeAction(action, {source, mediaItems: [], preserveOrder: false});
+        return;
+      }
       const startTime = new Date();
       const mediaItems = await this.getAndFilterMedia(filter, source);
 
@@ -492,11 +514,25 @@ export default class Core {
 
     let actionId = action.elementId;
     if (actionId === 'restoreTrash' || params.source === 'trash') actionId = 'restoreTrash';
-    if (actionId === 'unLock' || params.source === 'lockedFolder') actionId = 'unLock';
+    const lockedRepairAction = actionId === 'repairLockedDates' || actionId === 'recoverLockedDates';
+    if (lockedRepairAction && params.source !== 'lockedFolder') throw new Error('Open Locked Folder and select the Locked source first.');
+    if (params.source === 'lockedFolder' && !['unLock', 'repairLockedDates', 'recoverLockedDates'].includes(actionId)) {
+      throw new Error('This action is unavailable for Locked Folder. Use Repair locked dates to preview and repair dates without leaving photos unlocked.');
+    }
+    const checkRecovery = () => {
+      if (actionId !== 'recoverLockedDates' && readRepairRecovery(localStorage, windowGlobalData.account)) {
+        throw new Error('Locked Folder recovery is pending. Use Recover locked photo before any other action.');
+      }
+    };
+    checkRecovery();
 
     const handler = this.actionHandlers[actionId];
     if (handler) {
-      await handler(params);
+      if (lockedRepairAction || navigator.locks) {
+        await exclusiveLockedRepair(windowGlobalData.account, () => {checkRecovery(); return handler(params);});
+      } else {
+        await handler(params);
+      }
     } else {
       log(`Unknown action: ${actionId}`, 'error');
     }

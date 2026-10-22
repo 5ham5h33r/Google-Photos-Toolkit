@@ -23,10 +23,14 @@ const actions: Action[] = [
   { elementId: 'copyDescFromOther' },
   { elementId: 'setDateFromFilename' },
   { elementId: 'exportMetadata' },
+  { elementId: 'repairLockedDates' },
+  { elementId: 'recoverLockedDates' },
 ];
 
 const destructiveActions: Record<string, string> = {
   setDateFromFilename: 'WARNING: This will overwrite the original photo dates. This action cannot be undone!',
+  repairLockedDates: 'Photos will temporarily leave Locked Folder ONE AT A TIME to read filenames, then return before a change preview appears. Applying selected changes opens each photo again and returns it afterward. If this tab closes, photos may remain outside until you run Recover locked photo. A minimal recovery entry (photo identifiers only) is saved in this browser. Unknown dates/timezones are skipped. Keep this tab open.',
+  recoverLockedDates: 'This will return the photo recorded in this browser’s pending recovery entry to Locked Folder and verify it. It does not edit dates.',
 };
 
 function userConfirmation(action: Action, filter: Filter): boolean {
@@ -78,7 +82,7 @@ async function runAction(actionId: string): Promise<void> {
   }
 
   const filtersForm = document.querySelector<HTMLFormElement>('.filters-form');
-  if (filtersForm && !filtersForm.checkValidity()) {
+  if (actionId !== 'recoverLockedDates' && filtersForm && !filtersForm.checkValidity()) {
     filtersForm.reportValidity();
     return;
   }
