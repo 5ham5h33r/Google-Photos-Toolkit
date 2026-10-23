@@ -25,7 +25,7 @@ export function previewLockedDates(account: string, plans: DateRepairPlan[]): Pr
     const heading = document.createElement('h2');
     heading.textContent = 'Preview Locked Folder date repairs';
     const note = document.createElement('p');
-    note.textContent = `Account: ${account}. All previewed photos are back in Locked Folder. Date-only names preserve the existing time of day; each photo keeps its saved timezone offset. Save the change log before applying.`;
+    note.textContent = `Account: ${account}. All previewed photos are back in Locked Folder. Date-only names preserve the existing time of day; each photo keeps its saved timezone offset. Download the change log and check that it saved before applying.`;
     const scroller = document.createElement('div');
     scroller.style.cssText = 'max-height:50vh;overflow:auto;';
     const table = document.createElement('table');
@@ -54,7 +54,7 @@ export function previewLockedDates(account: string, plans: DateRepairPlan[]): Pr
     }
     scroller.appendChild(table);
     const save = document.createElement('button');
-    save.textContent = 'Save change log';
+    save.textContent = 'Download change log';
     const apply = document.createElement('button');
     apply.textContent = 'Apply selected changes';
     apply.disabled = true;
@@ -65,7 +65,10 @@ export function previewLockedDates(account: string, plans: DateRepairPlan[]): Pr
       downloadRepairRecord('locked-date-changes.json', {version: 1, account, createdAt: new Date().toISOString(), plans});
       apply.disabled = false;
     };
+    let finished = false;
     const finish = (selected: DateRepairPlan[]) => {
+      if (finished) return;
+      finished = true;
       dialog.close();
       dialog.remove();
       resolve(selected);
@@ -73,8 +76,9 @@ export function previewLockedDates(account: string, plans: DateRepairPlan[]): Pr
     apply.onclick = () => finish(plans.filter((_, i) => checks[i].checked));
     cancel.onclick = () => finish([]);
     dialog.oncancel = event => { event.preventDefault(); finish([]); };
+    dialog.onclose = () => finish([]);
     dialog.append(heading, note, scroller, save, apply, cancel);
     document.body.appendChild(dialog);
-    dialog.showModal();
+    try { dialog.showModal(); } catch (error) { dialog.remove(); throw error; }
   });
 }

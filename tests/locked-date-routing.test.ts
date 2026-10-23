@@ -1,9 +1,11 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 vi.mock('../src/windowGlobalData', () => ({windowGlobalData:{account:'test@example.invalid'}}));
 vi.mock('../src/utils/getFromStorage', () => ({default:vi.fn(() => null)}));
+vi.mock('../src/ui/logic/log', () => ({default:vi.fn()}));
 import Core from '../src/gptk-core';
 import ApiUtils from '../src/api/api-utils';
 import {LockedDateRepair, recoveryKey} from '../src/locked-date-repair';
+import log from '../src/ui/logic/log';
 
 const item={mediaKey:'media',dedupKey:'dedup',timestamp:0,creationTimestamp:0};
 let records: Map<string,string>;
@@ -62,5 +64,47 @@ describe('Locked Folder action dispatch', () => {
     const other={...item,mediaKey:'other',dedupKey:'other'};
     await core.executeAction({elementId:'repairLockedDates'},{source:'lockedFolder',mediaItems:[item,other],maxRepairItems:2,preserveOrder:false});
     expect(run).toHaveBeenCalledWith([item,other]);
+  });
+  it('logs the cap rather than claiming that all matched items will be processed', async () => {
+    vi.spyOn(LockedDateRepair.prototype,'run').mockResolvedValue();
+    const core=new Core();
+    await core.executeAction({elementId:'repairLockedDates'},{source:'lockedFolder',mediaItems:[item,{...item,dedupKey:'other'}],preserveOrder:false});
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('Matched 2 items; inspecting at most 1'));
+  });
+  it('recovery ignores invalid filters and never scans', async () => {
+    const recover=vi.spyOn(LockedDateRepair.prototype,'recover').mockResolvedValue();
+    const core=new Core();
+    const scan=vi.spyOn(LockedDateRepair.prototype,'scan');
+    await core.actionWithFilter({elementId:'recoverLockedDates'},{fileNameRegex:'[',lockedDateRepairLimit:'0',minDuration:'-3'},'lockedFolder');
+    expect(recover).toHaveBeenCalledTimes(1);
+    expect(scan).not.toHaveBeenCalled();
+  });
+  it('does not use a partially successful generic scan for repair', async () => {
+    const scan=vi.spyOn(LockedDateRepair.prototype,'scan').mockRejectedValue(new Error('second page failed'));
+    const run=vi.spyOn(LockedDateRepair.prototype,'run').mockResolvedValue();
+    const core=new Core();
+    await core.actionWithFilter({elementId:'repairLockedDates'},{},'lockedFolder');
+    expect(scan).toHaveBeenCalledTimes(1); expect(run).not.toHaveBeenCalled();
+    expect(core.isProcessRunning).toBe(false);
+  });
+  it('refuses an unsupported metadata filter before any scan or unlock', async () => {
+    const scan=vi.spyOn(LockedDateRepair.prototype,'scan');
+    const core=new Core();
+    await core.actionWithFilter({elementId:'repairLockedDates'},{fileNameRegex:'jpg'},'lockedFolder');
+    expect(scan).not.toHaveBeenCalled();
+  });
+  it('blocks another action while a stopped action is still cleaning up', async () => {
+    const core=new Core();
+    let finish!: () => void;
+    const run=vi.spyOn(LockedDateRepair.prototype,'run').mockImplementation(() => new Promise<void>(resolve => {finish=resolve;}));
+    vi.spyOn(LockedDateRepair.prototype,'scan').mockResolvedValue([item]);
+    const pending=core.actionWithFilter({elementId:'repairLockedDates'},{},'lockedFolder');
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    core.isProcessRunning=false;
+    expect(core.isActionInFlight).toBe(true);
+    await core.actionWithFilter({elementId:'repairLockedDates'},{},'lockedFolder');
+    expect(run).toHaveBeenCalledTimes(1);
+    finish(); await pending;
+    expect(core.isActionInFlight).toBe(false);
   });
 });

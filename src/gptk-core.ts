@@ -5,7 +5,7 @@ import log from './ui/logic/log';
 import getFromStorage from './utils/getFromStorage';
 import * as filters from './filters';
 import { apiSettingsDefault } from './api/api-utils-default-presets';
-import { LockedDateRepair, exclusiveLockedRepair, readRepairRecovery, lockedRepairLimit } from './locked-date-repair';
+import { LockedDateRepair, exclusiveLockedRepair, readRepairRecovery, lockedRepairLimit, validateLockedRepairFilter } from './locked-date-repair';
 import { previewLockedDates } from './ui/logic/locked-date-preview';
 import { windowGlobalData } from './windowGlobalData';
 import type { MediaItem, Filter, Source, Action, Album, ApiSettings, LibraryTimelinePage } from './types';
@@ -27,6 +27,9 @@ export default class Core {
   apiUtils!: ApiUtils;
 
   private actionHandlers: Record<string, ActionHandler>;
+  private actionInFlight = false;
+
+  get isActionInFlight(): boolean { return this.actionInFlight; }
 
   constructor() {
     this.isProcessRunning = false;
@@ -65,12 +68,13 @@ export default class Core {
 
   private lockedDateRepair(): LockedDateRepair {
     const account = windowGlobalData.account;
+    const assertAccount = () => {
+      if (!account || unsafeWindow.WIZ_global_data.oPEP7c !== account) throw new Error('Account changed. Return to the original account to recover its photo.');
+    };
     return new LockedDateRepair({
-      api: new Api(15000), account, storage: localStorage,
+      api: new Api(15000, assertAccount), account, storage: localStorage,
       running: () => this.isProcessRunning,
-      assertAccount: () => {
-        if (!account || unsafeWindow.WIZ_global_data.oPEP7c !== account) throw new Error('Account changed. Return to the original account to recover its photo.');
-      },
+      assertAccount,
       preview: plans => previewLockedDates(account, plans),
       log,
     });
@@ -468,14 +472,23 @@ export default class Core {
     newTargetAlbumName?: string,
     apiSettings?: ApiSettings
   ): Promise<void> {
+    if (this.actionInFlight) { log('An action is still running or returning a photo to Locked Folder. Wait for it to finish.', 'error'); return; }
     try {
-      this.preChecks(filter);
-      if (action.elementId === 'repairLockedDates') lockedRepairLimit(filter.lockedDateRepairLimit);
+      if (action.elementId !== 'recoverLockedDates') {
+        this.preChecks(filter);
+        if (readRepairRecovery(localStorage, windowGlobalData.account)) throw new Error('Locked Folder recovery is pending. Use Recover locked photo before any other action.');
+      }
+      if (action.elementId === 'repairLockedDates') {
+        lockedRepairLimit(filter.lockedDateRepairLimit);
+        validateLockedRepairFilter(filter);
+        if (source !== 'lockedFolder') throw new Error('Open Locked Folder and select the Locked source first.');
+      }
     } catch (error) {
       log(String(error), 'error');
       return;
     }
 
+    this.actionInFlight = true;
     this.isProcessRunning = true;
     document.dispatchEvent(new Event('change'));
     this.apiUtils = new ApiUtils(this, apiSettings ?? apiSettingsDefault);
@@ -486,7 +499,14 @@ export default class Core {
         return;
       }
       const startTime = new Date();
-      const mediaItems = await this.getAndFilterMedia(filter, source);
+      let mediaItems: MediaItem[];
+      if (action.elementId === 'repairLockedDates') {
+        // A failed page must never become a seemingly complete partial selection.
+        const found = await this.lockedDateRepair().scan();
+        mediaItems = this.isProcessRunning ? await this.applyFilters(found, filter, source) : [];
+      } else {
+        mediaItems = await this.getAndFilterMedia(filter, source);
+      }
 
       if (!mediaItems?.length) {
         log('No items to process');
@@ -504,17 +524,17 @@ export default class Core {
         preserveOrder: Boolean(filter.similarityThreshold ?? filter.sortBySize),
       });
 
-      log(`Task completed in ${timeToHHMMSS(new Date().getTime() - startTime.getTime())}`, 'success');
+      log(`Task ${this.isProcessRunning ? 'completed' : 'stopped'} in ${timeToHHMMSS(new Date().getTime() - startTime.getTime())}`, this.isProcessRunning ? 'success' : null);
     } catch (error) {
       log((error instanceof Error ? error.stack : String(error)) ?? 'Unknown error', 'error');
     } finally {
       this.isProcessRunning = false;
+      this.actionInFlight = false;
+      document.dispatchEvent(new Event('change'));
     }
   }
 
   async executeAction(action: Action, params: ExecuteActionParams): Promise<void> {
-    log(`Items to process: ${params.mediaItems.length}`);
-
     let actionId = action.elementId;
     if (actionId === 'restoreTrash' || params.source === 'trash') actionId = 'restoreTrash';
     const lockedRepairAction = actionId === 'repairLockedDates' || actionId === 'recoverLockedDates';
@@ -528,6 +548,15 @@ export default class Core {
       }
     };
     checkRecovery();
+
+    if (actionId === 'repairLockedDates') {
+      const limit = lockedRepairLimit(String(params.maxRepairItems ?? 1));
+      const unique = [...new Map(params.mediaItems.map(item => [item.dedupKey, item])).values()];
+      params = {...params, mediaItems: unique.slice(0, limit)};
+      log(`Matched ${unique.length} items; inspecting at most ${params.mediaItems.length} this run (limit ${limit}). Skipped items still count toward the limit.`);
+    } else if (actionId !== 'recoverLockedDates') {
+      log(`Items to process: ${params.mediaItems.length}`);
+    }
 
     const handler = this.actionHandlers[actionId];
     if (handler) {

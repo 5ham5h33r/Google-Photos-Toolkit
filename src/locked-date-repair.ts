@@ -1,9 +1,10 @@
 import { proposeRepairDate } from './utils/repairDateFromFilename';
 import type { RepairTimestamp } from './utils/repairDateFromFilename';
-import type { ItemInfoExt, LockedFolderPage, MediaItem } from './types';
+import type { ItemInfoExt, LockedFolderPage, LibraryTimelinePage, MediaItem, Filter } from './types';
 
 export interface RepairApi {
   getLockedFolderItems(pageId?: string | null): Promise<LockedFolderPage>;
+  getItemsByTakenDate(timestamp?: number | null, source?: string | null, pageId?: string | null, pageSize?: number): Promise<LibraryTimelinePage>;
   getItemInfoExt(mediaKey: string): Promise<ItemInfoExt>;
   removeFromLockedFolder(keys: string[]): Promise<unknown>;
   moveToLockedFolder(keys: string[]): Promise<unknown>;
@@ -27,6 +28,20 @@ export interface RepairRecovery extends RepairItem {
 }
 
 export const recoveryKey = (account: string): string => `gptk-locked-date-recovery:${account}`;
+
+// Only metadata reads before a date write may be skipped. Restoration failures,
+// account changes, identity mismatches and uncertain writes must stop the run.
+class MetadataReadError extends Error {}
+
+export function validateLockedRepairFilter(filter: Filter): void {
+  const unsupported: Array<keyof Filter> = ['fileNameRegex', 'descriptionRegex', 'space', 'quality',
+    'lowerBoundarySize', 'higherBoundarySize', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
+    'similarityThreshold', 'sortBySize', 'hasLocation', 'boundSouth', 'boundWest', 'boundNorth',
+    'boundEast', 'albumsExclude', 'excludeShared', 'owned', 'archived', 'favorite', 'excludeFavorites', 'uploadStatus'];
+  if (filter.type === 'live' || unsupported.some(key => Boolean(filter[key]))) {
+    throw new Error('Locked date repair supports date interval, Image/Video type and duration filters only. Reset unsupported filters before continuing.');
+  }
+}
 
 export function lockedRepairLimit(value = '1'): number {
   const limit = Number(value);
@@ -61,17 +76,27 @@ interface RepairOptions {
 export class LockedDateRepair {
   constructor(private options: RepairOptions) {}
 
-  private async lockedItems(): Promise<Map<string, MediaItem>> {
+  private async lockedItems(cancellable = false): Promise<Map<string, MediaItem>> {
     this.options.assertAccount();
     const items = new Map<string, MediaItem>();
     const pages = new Set<string>();
     let pageId: string | null = null;
     do {
+      if (cancellable && !this.options.running()) return new Map();
+      this.options.assertAccount();
       const page = await this.options.api.getLockedFolderItems(pageId);
       if (!page || !Array.isArray(page.items)) throw new Error('Cannot verify Locked Folder: unexpected page response.');
       for (const item of page.items) {
-        if (!item.mediaKey || !item.dedupKey) throw new Error('Cannot verify Locked Folder: missing photo identifiers.');
+        if (typeof item?.mediaKey !== 'string' || !item.mediaKey || typeof item.dedupKey !== 'string' || !item.dedupKey) {
+          throw new Error('Cannot verify Locked Folder: missing photo identifiers.');
+        }
+        if (items.has(item.dedupKey) && items.get(item.dedupKey)?.mediaKey !== item.mediaKey) {
+          throw new Error('Cannot verify Locked Folder: conflicting photo identifiers.');
+        }
         items.set(item.dedupKey, item);
+      }
+      if (page.nextPageId != null && (typeof page.nextPageId !== 'string' || !page.nextPageId)) {
+        throw new Error('Cannot verify Locked Folder: invalid page token.');
       }
       pageId = page.nextPageId ?? null;
       if (pageId) {
@@ -79,6 +104,12 @@ export class LockedDateRepair {
         pages.add(pageId);
       }
     } while (pageId);
+    return items;
+  }
+
+  async scan(): Promise<MediaItem[]> {
+    const items = [...(await this.lockedItems(true)).values()];
+    this.options.log(`Locked Folder scan complete: ${items.length} items found. No photos opened.`);
     return items;
   }
 
@@ -100,6 +131,7 @@ export class LockedDateRepair {
         if ((await this.lockedItems()).has(item.dedupKey)) {
           storage.removeItem(recoveryKey(account));
           if (storage.getItem(recoveryKey(account)) !== null) throw new Error('Could not clear recovery entry.');
+          this.options.log('Return verified: item is back in Locked Folder; recovery entry cleared.');
           return;
         }
       } catch (error) {
@@ -117,6 +149,42 @@ export class LockedDateRepair {
     this.options.log('Recovery verified: photo is back in Locked Folder.');
   }
 
+  private async libraryKey(item: MediaItem): Promise<string> {
+    // Google uses different mediaKeys inside and outside Locked Folder. Match
+    // only the stable dedupKey, using a bounded timeline lookup near its date.
+    if (!Number.isSafeInteger(item.timestamp)) throw new MetadataReadError('Cannot locate the library item without a valid source date.');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let timestamp = item.timestamp + 1000;
+      let pageId: string | null = null;
+      const pages = new Set<string>();
+      for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
+        if (!this.options.running()) throw new MetadataReadError('Stopped before reading library metadata.');
+        this.options.assertAccount();
+        const page = await this.options.api.getItemsByTakenDate(timestamp, null, pageId, 50);
+        if (!page || !Array.isArray(page.items)) throw new MetadataReadError('Invalid library lookup response.');
+        const matches = page.items.filter(candidate => candidate.dedupKey === item.dedupKey);
+        if (matches.length > 1) throw new MetadataReadError('Ambiguous library identifiers.');
+        if (matches.length === 1) {
+          const key = matches[0].mediaKey;
+          if (typeof key !== 'string' || !key) throw new MetadataReadError('Library lookup is missing the photo identifier.');
+          return key;
+        }
+        if (page.nextPageId == null) break;
+        if (typeof page.nextPageId !== 'string' || !page.nextPageId || pages.has(page.nextPageId)) {
+          throw new MetadataReadError('Invalid or repeated library page token.');
+        }
+        pages.add(page.nextPageId);
+        if (!Number.isSafeInteger(page.lastItemTimestamp)) throw new MetadataReadError('Invalid library pagination date.');
+        if (page.lastItemTimestamp < item.timestamp - 1000) break;
+        pageId = page.nextPageId;
+        // Keep equal timestamps eligible: the page token distinguishes ties.
+        timestamp = Math.min(timestamp, page.lastItemTimestamp + 1);
+      }
+      if (attempt < 2) await (this.options.wait?.() ?? new Promise(resolve => setTimeout(resolve, 500)));
+    }
+    throw new MetadataReadError('The moved photo could not be located by its stable identifier in the library.');
+  }
+
   private async withPhoto<T>(item: RepairItem, action: (info: ItemInfoExt) => Promise<T>): Promise<T> {
     const {api, running, storage, account, assertAccount} = this.options;
     assertAccount();
@@ -131,14 +199,22 @@ export class LockedDateRepair {
       await api.removeFromLockedFolder([item.dedupKey]);
       if ((await this.lockedItems()).has(item.dedupKey)) throw new Error('Could not verify that the photo moved out. No date was changed.');
       assertAccount();
-      const info = await api.getItemInfoExt(locked.mediaKey);
-      if (info?.dedupKey !== item.dedupKey || !info.mediaKey || !info.fileName || !Number.isFinite(info.timestamp)) {
-        throw new Error('Cannot identify the opened photo or read its date. No date was changed.');
+      let info: ItemInfoExt;
+      try { info = await api.getItemInfoExt(await this.libraryKey(locked)); }
+      catch (error) { throw new MetadataReadError(`Metadata request failed: ${error instanceof Error ? error.message : String(error)}`); }
+      if (!info?.dedupKey || !info.mediaKey) throw new MetadataReadError('Metadata response is missing photo identifiers.');
+      if (info.dedupKey !== item.dedupKey) {
+        throw new Error('Metadata identity mismatch. No date was changed; stopped for review.');
       }
+      if (!info.fileName || !Number.isFinite(info.timestamp)) throw new MetadataReadError('Metadata response is missing the filename or date.');
+      assertAccount();
       return await action(info);
     } finally {
       // Includes exceptions, cancellation, failed edits, and ambiguous unlock responses.
-      await this.restore(locked);
+      try { await this.restore(locked); }
+      catch (error) {
+        throw new Error(`STOPPED: return to Locked Folder or recovery cleanup could not be verified. Keep site data and use Recover locked photo before continuing. ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
@@ -146,42 +222,71 @@ export class LockedDateRepair {
     const {storage, account, running, api, preview, log, assertAccount} = this.options;
     if (readRepairRecovery(storage, account)) throw new Error('Recovery pending. Use Recover locked photo first.');
     const plans: DateRepairPlan[] = [];
-    for (const item of new Map(items.map(item => [item.dedupKey, item])).values()) {
+    let skipped = 0;
+    let inspected = 0;
+    const uniqueItems = [...new Map(items.map(item => [item.dedupKey, item])).values()];
+    for (const item of uniqueItems) {
       if (!running()) break;
-      const plan = await this.withPhoto(item, info => {
+      log(`Inspecting item ${++inspected}/${uniqueItems.length}. Only this item may temporarily leave Locked Folder.`);
+      let plan: DateRepairPlan | null;
+      try { plan = await this.withPhoto(item, info => {
         const after = proposeRepairDate(info.fileName ?? '', info.timestamp ?? NaN, info.timezoneOffset);
         if (!after || info.timestamp === undefined || info.timezoneOffset === undefined) return Promise.resolve(null);
         const before = {timestampSec: Math.floor(info.timestamp / 1000), timezoneSec: info.timezoneOffset / 1000};
         if (before.timestampSec === after.timestampSec) return Promise.resolve(null);
         return Promise.resolve({ ...item, filename: info.fileName ?? '', before, after });
-      });
+      }); } catch (error) {
+        if (!(error instanceof MetadataReadError)) throw error;
+        // withPhoto has completed verified restoration before this catch runs.
+        assertAccount();
+        if (readRepairRecovery(storage, account)) throw new Error('Recovery pending after metadata failure. Stop and recover the photo.');
+        skipped++;
+        log(`Skipped item ${inspected}/${uniqueItems.length}: ${error.message} No date changed; return to Locked Folder verified.`);
+        continue;
+      }
       if (plan) plans.push(plan);
-      else log('Skipped a photo with an unsupported filename, unknown timezone, or an already matching date.');
+      else { skipped++; log('Skipped a photo with an unsupported filename, unknown timezone, or an already matching date.'); }
     }
-    if (!running() || !plans.length) { log('No date changes to apply. All opened photos were returned to Locked Folder.'); return; }
+    log(`Inspection complete: ${inspected} inspected, ${skipped} skipped, ${plans.length} proposed changes. All opened items are back in Locked Folder.`);
+    if (!running()) { log('Stopped. No date changes applied.'); return; }
+    if (!plans.length) { log('No date changes to apply.'); return; }
     // Every photo is back in Locked Folder before the user sees the full preview.
     const selected = await preview(plans);
+    if (!selected.length) { log('Preview cancelled or no changes selected. No dates were changed.'); return; }
     let changed = 0;
+    let attempted = 0;
     for (const plan of selected) {
       if (!running()) break;
       if (!plans.includes(plan)) throw new Error('Invalid preview selection.');
-      await this.withPhoto(plan, async info => {
+      log(`Applying selected change ${++attempted}/${selected.length}.`);
+      try { await this.withPhoto(plan, async info => {
         if (!running()) return;
         if (info.fileName !== plan.filename || Math.floor((info.timestamp ?? NaN) / 1000) !== plan.before.timestampSec ||
             (info.timezoneOffset ?? NaN) / 1000 !== plan.before.timezoneSec) {
           throw new Error('Photo changed since preview. No date was changed; start a new preview.');
         }
         assertAccount();
-        await api.setItemsTimestamp([{dedupKey: plan.dedupKey, ...plan.after}]);
-        const updated = await api.getItemInfoExt(info.mediaKey ?? plan.mediaKey);
+        let writeError: unknown;
+        try { await api.setItemsTimestamp([{dedupKey: plan.dedupKey, ...plan.after}]); }
+        catch (error) { writeError = error; }
+        // A lost write response may have committed. Never repeat the workflow or
+        // call it skipped without reading the actual date back.
+        assertAccount();
+        let updated: ItemInfoExt;
+        try { updated = await api.getItemInfoExt(info.mediaKey ?? plan.mediaKey); }
+        catch { throw new Error('Date write outcome is unknown: updated metadata could not be read. Stopped for review; do not assume the date stayed unchanged.'); }
         if (updated.dedupKey !== plan.dedupKey || Math.floor((updated.timestamp ?? NaN) / 1000) !== plan.after.timestampSec ||
             (updated.timezoneOffset ?? NaN) / 1000 !== plan.after.timezoneSec) {
-          throw new Error('Could not verify the updated date. Photo will be returned to Locked Folder; review it before retrying.');
+          throw new Error(`Could not verify the updated date${writeError ? ' after a failed write response' : ''}. Stopped for review; do not assume the date stayed unchanged.`);
         }
         changed++;
-      });
+      }); } catch (error) {
+        if (!(error instanceof MetadataReadError)) throw error;
+        assertAccount();
+        log(`Skipped a selected change: ${error.message} No date write attempted for this item; return verified.`);
+      }
     }
-    log(`Verified ${changed} date changes. All opened photos were returned to Locked Folder.`);
+    log(`${running() ? 'Finished' : 'Stopped'}: verified ${changed} of ${selected.length} selected date changes. All opened photos were returned to Locked Folder.`);
   }
 }
 

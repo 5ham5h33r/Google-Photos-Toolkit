@@ -39,4 +39,10 @@ describe('conservative repair dates', () => {
     expect(proposeRepairDate('2023-05-15.jpg', 0, undefined)).toBeNull();
     expect(proposeRepairDate('2023-05-15.jpg', 0, 0)?.timezoneSec).toBe(0);
   });
+  it.each(['hashabc20230515def.jpg','abc20230515123456def.mp4','2023-05-15extra.jpg','2023-05-15T14.jpg','2023-05-15T14xx.jpg'])('does not infer a date embedded in an opaque token or incomplete timestamp: %s',name=>{
+    expect(repairDateFromFilename(name)).toBeNull();
+  });
+  it('rejects an out-of-range original date even with an explicit filename time',()=>{
+    expect(proposeRepairDate('IMG_20230515_003022.jpg',1e18,0)).toBeNull();
+  });
 });

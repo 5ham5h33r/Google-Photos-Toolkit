@@ -15,6 +15,12 @@ export function repairDateFromFilename(filename: string): RepairDate | null {
   const compact = [...name.matchAll(/(?<!\d)((?:19|20)\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?!\d)/g)];
   if (dates.length + compact.length !== 1) return null;
   const match = compact[0] ?? dates[0];
+  const prefix = name.slice(0, match.index);
+  const suffix = name.slice((match.index ?? 0) + match[0].length);
+  // Embedded date-looking digits in a hash are not a capture date. Allow the
+  // common IMG/VID camera prefix as well as an actual filename separator.
+  if (/[A-Za-z0-9]$/.test(prefix) && !/(?:^|[^A-Za-z0-9])(?:IMG|VID)$/i.test(prefix)) return null;
+  if (/^[A-Za-z0-9]/.test(suffix) && !/^T\d{2}/.test(suffix)) return null;
   const result: RepairDate = {
     year: Number(match[1]),
     month: Number(compact.length ? match[2] : match[2] ?? match[4]),
@@ -32,7 +38,7 @@ export function repairDateFromFilename(filename: string): RepairDate | null {
       result.hour = Number(time[1] ?? time[4]);
       result.minute = Number(time[2] ?? time[5]);
       result.second = Number(time[3] ?? time[6]);
-    } else if (/^[T _-]\d{2}(?:[.:-]\d{2}|\d{2})/.test(tail) && !/^_[0-9a-f]{8}-[0-9a-f]{4}-/i.test(tail)) {
+    } else if ((/^T/.test(tail) || /^[ _-]\d{2}(?:[.:-]\d{2}|\d{2})/.test(tail)) && !/^_[0-9a-f]{8}-[0-9a-f]{4}-/i.test(tail)) {
       return null;
     }
   }
@@ -53,6 +59,7 @@ export function proposeRepairDate(filename: string, timestampMs: number, offsetM
       Math.abs(offsetMs) > 14 * 3600000 || offsetMs % 60000 !== 0) return null;
   // Use the photo's recorded fixed offset, never the browser's local timezone.
   const clock = new Date(timestampMs + offsetMs);
+  if (!Number.isFinite(clock.getTime())) return null;
   const timestampSec = Math.floor((Date.UTC(date.year, date.month - 1, date.day,
     date.hour ?? clock.getUTCHours(), date.minute ?? clock.getUTCMinutes(), date.second ?? clock.getUTCSeconds()) - offsetMs) / 1000);
   return Number.isSafeInteger(timestampSec) ? { timestampSec, timezoneSec: offsetMs / 1000 } : null;

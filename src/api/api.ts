@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 // Raw RPC responses from Google's batchexecute endpoint are untyped JSON.
 // The no-unsafe-* rules are expected for this low-level API layer.
 
@@ -27,7 +27,7 @@ export default class Api {
   private static readonly MAX_RETRIES = 3;
   private static readonly RETRY_BASE_DELAY_MS = 2000;
 
-  constructor(private readonly requestTimeoutMs?: number) {}
+  constructor(private readonly requestTimeoutMs?: number, private readonly beforeRequest?: () => void) {}
 
   /**
    * Core RPC request with retry and response validation.
@@ -66,6 +66,9 @@ export default class Api {
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= Api.MAX_RETRIES; attempt++) {
+      // Recheck the account before EVERY retry, not just the initial request.
+      // Guard failures must escape without another request or backoff.
+      this.beforeRequest?.();
       try {
         const response = await fetch(url, {
           headers: {
@@ -93,13 +96,18 @@ export default class Api {
           throw new Error('No wrb.fr envelope found in response');
         }
 
-        const parsedData = JSON.parse(jsonLines[0]);
-
-        if (!parsedData?.[0]?.[2]) {
+        // Multiple envelopes can share a line or be preceded by another RPC.
+        // Match this request explicitly instead of trusting the first entry.
+        const envelopes = jsonLines.flatMap((line) => {
+          const parsed = JSON.parse(line);
+          return Array.isArray(parsed) ? parsed : [];
+        });
+        const envelope = envelopes.find((entry) => Array.isArray(entry) && entry[0] === 'wrb.fr' && entry[1] === rpcid);
+        if (typeof envelope?.[2] !== 'string' || !envelope[2]) {
           throw new Error('Missing payload in parsed response');
         }
 
-        return JSON.parse(parsedData[0][2]);
+        return JSON.parse(envelope[2]);
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         console.error(`Error in ${rpcid} request (attempt ${attempt}/${Api.MAX_RETRIES}):`, lastError.message);

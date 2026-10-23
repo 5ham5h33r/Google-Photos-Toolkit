@@ -21,6 +21,8 @@
   "packageManager": "pnpm@10.30.0",
   "scripts": {
     "build": "rollup -c",
+    "build:test": "rollup -c && node tools/build-local-test.mjs",
+    "mock:serve": "node tests/mock-site/serve.mjs",
     "watch": "rollup -c -w",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",

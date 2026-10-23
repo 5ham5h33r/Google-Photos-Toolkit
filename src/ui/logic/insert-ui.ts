@@ -47,6 +47,8 @@ function hideMainMenu(): void {
 
 function baseListenersSetUp(): void {
   document.addEventListener('change', updateUI);
+  // Recovery entries can change in another tab without a form change here.
+  window.addEventListener('storage', updateUI);
 
   const gptkButton = document.getElementById('gptk-button');
   gptkButton?.addEventListener('click', showMainMenu);

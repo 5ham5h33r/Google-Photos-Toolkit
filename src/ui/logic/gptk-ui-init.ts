@@ -24,7 +24,7 @@ export default function initUI(): void {
   updateUI();
   try {
     if (localStorage.getItem(recoveryKey(windowGlobalData.account)) !== null) {
-      log('Locked Folder recovery pending. Open Locked Folder, reload, and use Recover locked photo. Do not clear site data.', 'error');
+      log('Locked Folder recovery pending. Open and authenticate to Locked Folder and use Recover locked photo. Do not clear site data.', 'error');
     }
   } catch {
     log('Browser storage is unavailable. Locked Folder date repair requires persistent recovery storage.', 'error');
@@ -37,7 +37,9 @@ export default function initUI(): void {
   }
 
   window.addEventListener('beforeunload', function (e: BeforeUnloadEvent) {
-    if (unsafeWindow.gptkCore.isProcessRunning) {
+    let pending = false;
+    try { pending = localStorage.getItem(recoveryKey(windowGlobalData.account)) !== null; } catch { /* Active-action guard still applies. */ }
+    if (unsafeWindow.gptkCore.isProcessRunning || unsafeWindow.gptkCore.isActionInFlight || pending) {
       e.preventDefault();
     }
   });

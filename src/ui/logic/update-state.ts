@@ -108,6 +108,8 @@ export function updateUI(): void {
       quality: document.querySelector<HTMLElement>('.quality'),
       size: document.querySelector<HTMLElement>('.size'),
       resolution: document.querySelector<HTMLElement>('.resolution'),
+      similarity: document.querySelector<HTMLElement>('.similarity'),
+      sortBySize: document.querySelector<HTMLInputElement>('input[name="sortBySize"]')?.closest('fieldset') ?? null,
       filename: document.querySelector<HTMLElement>('.filename'),
       description: document.querySelector<HTMLElement>('.description'),
       space: document.querySelector<HTMLElement>('.space'),
@@ -137,7 +139,7 @@ export function updateUI(): void {
       if (filterElements.search) toggleVisibility(filterElements.search, true);
       if (filterElements.favorite) toggleVisibility(filterElements.favorite, true);
     }
-    if (!isActiveTab('trash')) {
+    if (!isActiveTab('trash') && !isActiveTab('lockedFolder')) {
       if (filterElements.livePhotoType) toggleVisibility(filterElements.livePhotoType, true);
       if (filterElements.quality) toggleVisibility(filterElements.quality, true);
       if (filterElements.size) toggleVisibility(filterElements.size, true);
@@ -146,6 +148,8 @@ export function updateUI(): void {
       if (filterElements.filename) toggleVisibility(filterElements.filename, true);
       if (filterElements.description) toggleVisibility(filterElements.description, true);
       if (filterElements.space) toggleVisibility(filterElements.space, true);
+      if (filterElements.similarity) toggleVisibility(filterElements.similarity, true);
+      if (filterElements.sortBySize) toggleVisibility(filterElements.sortBySize, true);
       if (!isActiveTab('lockedFolder') && filterElements.excludeAlbums) {
         toggleVisibility(filterElements.excludeAlbums, true);
       }
