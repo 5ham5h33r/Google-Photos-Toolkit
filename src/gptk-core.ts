@@ -14,6 +14,7 @@ type ActionHandler = (params: ExecuteActionParams) => Promise<void>;
 
 interface ExecuteActionParams {
   maxRepairItems?: number;
+  processAllRepairItems?: boolean;
   mediaItems: MediaItem[];
   source: Source;
   targetAlbum?: Album;
@@ -61,7 +62,7 @@ export default class Core {
       copyDescFromOther: async (p) => this.apiUtils.copyDescriptionFromOther(p.mediaItems),
       setDateFromFilename: async (p) => this.apiUtils.setTimestampFromFilename(p.mediaItems),
       exportMetadata: async (p) => this.apiUtils.exportMetadata(p.mediaItems),
-      repairLockedDates: async (p) => this.lockedDateRepair().run(p.mediaItems.slice(0, lockedRepairLimit(String(p.maxRepairItems ?? 1)))),
+      repairLockedDates: async (p) => this.lockedDateRepair().run(p.mediaItems),
       recoverLockedDates: async () => this.lockedDateRepair().recover(),
     };
   }
@@ -479,7 +480,7 @@ export default class Core {
         if (readRepairRecovery(localStorage, windowGlobalData.account)) throw new Error('Locked Folder recovery is pending. Use Recover locked photo before any other action.');
       }
       if (action.elementId === 'repairLockedDates') {
-        lockedRepairLimit(filter.lockedDateRepairLimit);
+        if (filter.lockedDateRepairAll !== 'true') lockedRepairLimit(filter.lockedDateRepairLimit);
         validateLockedRepairFilter(filter);
         if (source !== 'lockedFolder') throw new Error('Open Locked Folder and select the Locked source first.');
       }
@@ -516,7 +517,10 @@ export default class Core {
       if (!this.isProcessRunning) return;
 
       await this.executeAction(action, {
-        maxRepairItems: action.elementId === 'repairLockedDates' ? lockedRepairLimit(filter.lockedDateRepairLimit) : undefined,
+        processAllRepairItems: filter.lockedDateRepairAll === 'true',
+        maxRepairItems: action.elementId === 'repairLockedDates' && filter.lockedDateRepairAll !== 'true'
+          ? lockedRepairLimit(filter.lockedDateRepairLimit)
+          : undefined,
         mediaItems,
         source,
         targetAlbum,
@@ -550,10 +554,15 @@ export default class Core {
     checkRecovery();
 
     if (actionId === 'repairLockedDates') {
-      const limit = lockedRepairLimit(String(params.maxRepairItems ?? 1));
       const unique = [...new Map(params.mediaItems.map(item => [item.dedupKey, item])).values()];
-      params = {...params, mediaItems: unique.slice(0, limit)};
-      log(`Matched ${unique.length} items; inspecting at most ${params.mediaItems.length} this run (limit ${limit}). Skipped items still count toward the limit.`);
+      if (params.processAllRepairItems) {
+        params = { ...params, mediaItems: unique };
+        log(`Matched ${unique.length} items; inspecting all matching items, one at a time.`);
+      } else {
+        const limit = lockedRepairLimit(String(params.maxRepairItems ?? 1));
+        params = { ...params, mediaItems: unique.slice(0, limit) };
+        log(`Matched ${unique.length} items; inspecting at most ${params.mediaItems.length} this run (limit ${limit}). Skipped items still count toward the limit.`);
+      }
     } else if (actionId !== 'recoverLockedDates') {
       log(`Items to process: ${params.mediaItems.length}`);
     }
@@ -561,7 +570,10 @@ export default class Core {
     const handler = this.actionHandlers[actionId];
     if (handler) {
       if (lockedRepairAction || navigator.locks) {
-        await exclusiveLockedRepair(windowGlobalData.account, () => {checkRecovery(); return handler(params);});
+        await exclusiveLockedRepair(windowGlobalData.account, () => {
+          checkRecovery();
+          return handler(params);
+        });
       } else {
         await handler(params);
       }

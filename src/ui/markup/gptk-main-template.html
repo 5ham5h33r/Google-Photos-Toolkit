@@ -141,9 +141,10 @@
         </fieldset></details>
 
         <div class="locked-date-options" style="display:none">
+          <label class="form-control"><input id="lockedDateRepairAll" name="lockedDateRepairAll" type="checkbox" value="true" disabled>Process all matching items</label>
           <label class="form-control" for="lockedDateRepairLimit">Maximum photos per repair run</label>
           <div class="input-wrapper"><input id="lockedDateRepairLimit" name="lockedDateRepairLimit" type="number" min="1" max="100" value="1" required disabled></div>
-          <p class="filter-note">Start with 1 photo to test. Each photo temporarily leaves Locked Folder, then returns before the next.</p>
+          <p class="filter-note">Start with 1 photo to test. Process all ignores the limit and includes every item matching your filters. Each item returns to Locked Folder before the next opens. Keep this tab open until the run finishes.</p>
         </div>
 
         <details class="date-interval"><summary>Date Interval</summary><fieldset>

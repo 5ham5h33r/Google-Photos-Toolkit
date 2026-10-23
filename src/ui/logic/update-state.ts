@@ -129,6 +129,9 @@ export function updateUI(): void {
     }
     if (isActiveTab('lockedFolder') && filterElements.lockedDateOptions) {
       toggleVisibility(filterElements.lockedDateOptions, true);
+      const processAll = document.getElementById('lockedDateRepairAll') as HTMLInputElement | null;
+      const limit = document.getElementById('lockedDateRepairLimit') as HTMLInputElement | null;
+      if (limit) limit.disabled = processAll?.checked ?? false;
     }
     if (['library', 'search', 'favorites'].some(isActiveTab)) {
       if (filterElements.owned) toggleVisibility(filterElements.owned, true);

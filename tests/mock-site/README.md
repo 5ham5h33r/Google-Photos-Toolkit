@@ -12,6 +12,13 @@ Use limit 2 for the first metadata-failure scenario; it must skip the first phot
 preview the video alone, and edit only that video after download and Apply.
 With limit 1 it must open only the first item, even if that item is skipped.
 
+For Process all, select its 125-item scenario and check **Process all matching
+items**. The numeric limit must become disabled. Inspection should reach item
+125, skip 25 unknown filenames, and preview 100 changes while all items are
+locked. Download the change log and apply; expect 100 date writes, no recovery
+entry, and at most one item outside. Unchecking Process all restores the numeric
+limit. Date/type/duration filters still apply in either mode.
+
 Check the independent observations after each test: at most one item outside,
 no writes before Apply, no recovery journal left after successful return, and no
 invariant violations. Cancel and unknown names must write no dates. Selective

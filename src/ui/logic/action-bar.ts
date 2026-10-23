@@ -44,7 +44,11 @@ function userConfirmation(action: Action, filter: Filter): boolean {
     warning.push(`\nSource: ${sourceHuman}`);
     warning.push(`\n${filterDescription}`);
     warning.push(`\nAction: ${actionElement?.title ?? action.elementId}`);
-    if (action.elementId === 'repairLockedDates') warning.push(`\nMaximum photos this run: ${filter.lockedDateRepairLimit ?? '1'}`);
+    if (action.elementId === 'repairLockedDates') {
+      warning.push(filter.lockedDateRepairAll === 'true'
+        ? '\nProcess all matching items: no per-run limit. Date, type and duration filters still apply.'
+        : `\nMaximum photos this run: ${filter.lockedDateRepairLimit ?? '1'}`);
+    }
 
     const destructiveWarning = destructiveActions[action.elementId];
     if (destructiveWarning) {

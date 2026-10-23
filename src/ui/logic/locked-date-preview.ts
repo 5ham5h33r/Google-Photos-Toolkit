@@ -8,7 +8,7 @@ function displayDate(value: RepairTimestamp): string {
 }
 
 export function downloadRepairRecord(filename: string, data: unknown): void {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
@@ -18,10 +18,12 @@ export function downloadRepairRecord(filename: string, data: unknown): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Return the checked plans after a change-log download request, or an empty list on Cancel. */
 export function previewLockedDates(account: string, plans: DateRepairPlan[]): Promise<DateRepairPlan[]> {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const dialog = document.createElement('dialog');
-    dialog.style.cssText = 'color:#eee;background:#202124;border:1px solid #666;border-radius:12px;padding:24px;max-width:90vw;max-height:85vh;';
+    dialog.style.cssText =
+      'color:#eee;background:#202124;border:1px solid #666;border-radius:12px;padding:24px;max-width:90vw;max-height:85vh;';
     const heading = document.createElement('h2');
     heading.textContent = 'Preview Locked Folder date repairs';
     const note = document.createElement('p');
@@ -62,7 +64,12 @@ export function previewLockedDates(account: string, plans: DateRepairPlan[]): Pr
     cancel.textContent = 'Cancel';
     for (const button of [save, apply, cancel]) button.style.cssText = 'padding:10px;margin:12px 8px 0 0;';
     save.onclick = () => {
-      downloadRepairRecord('locked-date-changes.json', {version: 1, account, createdAt: new Date().toISOString(), plans});
+      downloadRepairRecord('locked-date-changes.json', {
+        version: 1,
+        account,
+        createdAt: new Date().toISOString(),
+        plans,
+      });
       apply.disabled = false;
     };
     let finished = false;
@@ -75,10 +82,18 @@ export function previewLockedDates(account: string, plans: DateRepairPlan[]): Pr
     };
     apply.onclick = () => finish(plans.filter((_, i) => checks[i].checked));
     cancel.onclick = () => finish([]);
-    dialog.oncancel = event => { event.preventDefault(); finish([]); };
+    dialog.oncancel = (event) => {
+      event.preventDefault();
+      finish([]);
+    };
     dialog.onclose = () => finish([]);
     dialog.append(heading, note, scroller, save, apply, cancel);
     document.body.appendChild(dialog);
-    try { dialog.showModal(); } catch (error) { dialog.remove(); throw error; }
+    try {
+      dialog.showModal();
+    } catch (error) {
+      dialog.remove();
+      throw error;
+    }
   });
 }

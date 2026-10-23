@@ -1,31 +1,84 @@
 <!doctype html>
-<html lang="en"><meta charset="utf-8"><title>Locked date repair — local mock site</title>
-<style>
-body{background:#121316;color:#eee;font:15px system-ui;margin:24px}button,select{padding:9px;margin:5px}table{border-collapse:collapse}td,th{padding:8px;border:1px solid #555;text-align:left}pre{white-space:pre-wrap}#mock-panel{max-width:1100px;margin:auto}#mock-report{background:#222;padding:14px}dialog::backdrop{background:#0009}
-</style>
-<section id="mock-panel">
-<h1>Locked Folder date repair: local mock site</h1>
-<p>Synthetic images/videos only. Google RPCs are intercepted in this page; no Google Photos connection is made.</p>
-<label for="scenario">Scenario</label><select id="scenario">
-<option value="metadata">First metadata read fails; next video succeeds</option>
-<option value="success">Photo and video success</option>
-<option value="unknown">Unrecognizable filename</option>
-<option value="lock-failure">Metadata and restoration both fail</option>
-<option value="lost-write">Date write commits but all responses are lost</option>
-<option value="apply-read-failure">Metadata fails after preview, before write</option>
-<option value="write-read-failure">Readback fails after date write</option>
-<option value="stale">Metadata changes since preview</option>
-<option value="identity">Metadata identity mismatch</option>
-<option value="account">Account changes while an item is open</option>
-<option value="pagination">Second source page fails</option>
-<option value="repeated">Source page token repeats</option>
-<option value="slow">Slow metadata request for Stop test</option>
-</select>
-<button id="reset-mock">Reset synthetic library</button><button id="repair-mock">Restore mock connection/account</button>
-<div class="c9yG5b"></div>
-<h2>Independent mock observations</h2><pre id="mock-report" role="status"></pre>
-<table><thead><tr><th>Item</th><th>Kind</th><th>Folder</th><th>Date</th><th>Date writes</th></tr></thead><tbody id="mock-items"></tbody></table>
-<details><summary>RPC events</summary><pre id="mock-events"></pre></details>
-</section>
-<script src="/mock-api.js"></script><script src="/bundle.js"></script>
+<html lang="en">
+  <meta charset="utf-8" /><title>Locked date repair — local mock site</title>
+  <style>
+    body {
+      background: #121316;
+      color: #eee;
+      font: 15px system-ui;
+      margin: 24px;
+    }
+    button,
+    select {
+      padding: 9px;
+      margin: 5px;
+    }
+    table {
+      border-collapse: collapse;
+    }
+    td,
+    th {
+      padding: 8px;
+      border: 1px solid #555;
+      text-align: left;
+    }
+    pre {
+      white-space: pre-wrap;
+    }
+    #mock-panel {
+      max-width: 1100px;
+      margin: auto;
+    }
+    #mock-report {
+      background: #222;
+      padding: 14px;
+    }
+    dialog::backdrop {
+      background: #0009;
+    }
+  </style>
+  <section id="mock-panel">
+    <h1>Locked Folder date repair: local mock site</h1>
+    <p>Synthetic images/videos only. Google RPCs are intercepted in this page; no Google Photos connection is made.</p>
+    <label for="scenario">Scenario</label
+    ><select id="scenario">
+      <option value="metadata">First metadata read fails; next video succeeds</option>
+      <option value="success">Photo and video success</option>
+      <option value="all">Process all: 125 photos and videos, including 25 unknown names</option>
+      <option value="unknown">Unrecognizable filename</option>
+      <option value="lock-failure">Metadata and restoration both fail</option>
+      <option value="lost-write">Date write commits but all responses are lost</option>
+      <option value="apply-read-failure">Metadata fails after preview, before write</option>
+      <option value="write-read-failure">Readback fails after date write</option>
+      <option value="stale">Metadata changes since preview</option>
+      <option value="identity">Metadata identity mismatch</option>
+      <option value="account">Account changes while an item is open</option>
+      <option value="pagination">Second source page fails</option>
+      <option value="repeated">Source page token repeats</option>
+      <option value="slow">Slow metadata request for Stop test</option>
+    </select>
+    <button id="reset-mock">Reset synthetic library</button
+    ><button id="repair-mock">Restore mock connection/account</button>
+    <div class="c9yG5b"></div>
+    <h2>Independent mock observations</h2>
+    <pre id="mock-report" role="status"></pre>
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Kind</th>
+          <th>Folder</th>
+          <th>Date</th>
+          <th>Date writes</th>
+        </tr>
+      </thead>
+      <tbody id="mock-items"></tbody>
+    </table>
+    <details>
+      <summary>RPC events</summary>
+      <pre id="mock-events"></pre>
+    </details>
+  </section>
+  <script src="/mock-api.js"></script>
+  <script src="/bundle.js"></script>
 </html>
